@@ -1,0 +1,108 @@
+#!/bin/bash
+
+ISOWN_VERSION="1.20250823" # $ date +%Y%m%d
+
+print_help() {
+cat << EOF
+Usage: $(basename "$0") [OPTIONS] USER:GROUP [PATH...]
+
+Set ownership recursively or non-recursively on provided path(s).
+
+Options:
+  -R, --recursive           operate on files and directories recursively
+  -c, --changes             like verbose but report only when a change is made
+  -f, --silent, --quiet     suppress most error messages
+  -v, --verbose             output a diagnostic for every file processed
+  -H                        if a command line argument is a symbolic link to a directory,
+                            traverse it
+  -L                        traverse every symbolic link to a directory encountered
+  -P                        do not traverse any symbolic links (default)
+      --help                display this help and exit
+      --version             output version information and exit
+
+Example:
+  $(basename "$0") -Rcv user:group /data/app
+EOF
+}
+
+print_version() {
+    echo "$(basename "$0") v$ISOWN_VERSION"
+}
+
+# Define and parse options
+if ! ARGS=$(getopt -o "RcfvHLP" -l "recursive,changes,silent,quiet,verbose,help,version" -n "$(basename "$0")" -- "$@"); then
+    exit 1
+fi
+
+eval set -- "$ARGS"
+
+CHOWN_OPTIONS=()
+FIND_OPTION_MAXDEPTH=("-maxdepth" "0")
+
+while true; do
+    case "$1" in
+        -R|--recursive)
+            FIND_OPTION_MAXDEPTH=()
+            shift
+            ;;
+        -c|--changes)
+            CHOWN_OPTIONS+=("-c")
+            shift
+            ;;
+        -f|--silent|--quiet)
+            CHOWN_OPTIONS+=("-f")
+            shift
+            ;;
+        -v|--verbose)
+            CHOWN_OPTIONS+=("-v")
+            shift
+            ;;
+        -h)
+            CHOWN_OPTIONS+=("-h")
+            shift
+            ;;
+        -H)
+            CHOWN_OPTIONS+=("-H")
+            shift
+            ;;
+        -L)
+            CHOWN_OPTIONS+=("-L")
+            shift
+            ;;
+        -P)
+            CHOWN_OPTIONS+=("-P")
+            shift
+            ;;
+        --help)
+            print_help
+            exit 0
+            ;;
+        --version)
+            print_version
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+    esac
+done
+
+OWNER="$1"
+
+IFS=: read -r USER GROUP <<< "${OWNER}"
+if [[ -z "${GROUP}" ]]; then
+    echo "$(basename "$0"): expected format 'USER:GROUP', e.g. 'user:group'" >&2
+    exit 1
+fi
+
+if [[ "$#" -eq 0 ]]; then
+    echo "$(basename "$0"): no path specified" >&2
+    exit 1
+fi
+
+PATHS=("${@:2}")
+
+CHOWN_ERROR="$(basename "$0"): permissions could not be set, probably because volume mounts are remote or read-only"
+
+/usr/bin/find "${PATHS[@]}" "${FIND_OPTION_MAXDEPTH[@]}" ! -xtype l \( ! -group "${GROUP}" -o ! -user "${USER}" \) -exec chown "${CHOWN_OPTIONS[@]}" "${USER}":"${GROUP}" {} + || printf "${CHOWN_ERROR}"

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+WITHCONTENV_VERSION="1.20250823" # $ date +%Y%m%d
+
+exec /command/with-contenv "$@"
